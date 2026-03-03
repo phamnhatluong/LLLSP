@@ -227,7 +227,7 @@ body{
 </div>
 
 <!-- MESSENGER -->
-<div class="messenger" id="messenger">
+<div class="messenger" id="messenger" >
     <div class="header">8/3 vui vẻ nheee❤️</div>
     <div class="chat" id="chat"></div>
 </div>
@@ -324,48 +324,73 @@ function readFileAsDataURL(file){
     });
 }
 
+// extract data URLs and http(s) links from a free-form textarea value
+function extractImageEntries(raw){
+    if(!raw || !raw.length) return [];
+    const entries = [];
+    const re = /(data:[^;]+;base64,[A-Za-z0-9+/=]+)|(https?:\/\/[^\s,\n]+)/g;
+    let m;
+    while((m = re.exec(raw)) !== null){
+        entries.push(m[0].trim());
+    }
+    // if we found entries via regex, return them
+    if(entries.length) return entries;
+    // fallback: split on newlines or commas
+    return raw.split(/\r?\n|,\s*/g).map(s=>s.trim()).filter(Boolean);
+}
+
 uploadInput.addEventListener('change', async (e)=>{
     const files = Array.from(e.target.files || []);
     if(files.length===0) return;
     const dataUrls = await Promise.all(files.map(readFileAsDataURL));
-    // Append as JSON-safe entries (we'll join later when generating)
+    // Append entries separated by newline (safer)
     const existing = imageLinksTextarea.value.trim();
-    const combined = existing ? existing + ', ' + dataUrls.join(', ') : dataUrls.join(', ');
+    const combined = existing ? existing + '\n' + dataUrls.join('\n') : dataUrls.join('\n');
     imageLinksTextarea.value = combined;
+    // Use the first image as the key value and create an index link: index.html?key=<image>
+    const first = dataUrls[0];
+    try{
+        const idxUrl = new URL(window.location.pathname, window.location.href);
+        idxUrl.searchParams.set('key', first);
+        await navigator.clipboard.writeText(idxUrl.href);
+        alert('Đã tạo và sao chép link index:\n' + idxUrl.href);
+        // open index link (preview)
+        window.open(idxUrl.href, '_blank');
+    }catch(e){
+        const idx = window.location.pathname + '?key=' + encodeURIComponent(first);
+        alert('Đã tạo link index: ' + idx);
+        window.open(idx, '_blank');
+    }
+    // hide the input UI (index opened with key should hide it)
+    document.getElementById('image-input-container').style.display = 'none';
+    // set the letter to open page2 with images=<first-image>
+    document.getElementById('letter').onclick = () => { window.location.href = 'page2.html?images=' + encodeURIComponent(first) };
 });
 
 generateBtn.addEventListener('click', async ()=>{
     const raw = imageLinksTextarea.value.trim();
     if(!raw){ alert('Bạn chưa nhập link ảnh.'); return; }
-    let parts = raw.split(/,\s*/g).map(s=>s.trim()).filter(Boolean);
-
-    // Prepare encoded payload
-    const json = JSON.stringify(parts);
-    const encoded = encodeURIComponent(json);
-
-    // If payload is large, save to localStorage and pass a short key instead
-    const url = new URL('index.html', window.location.href);
-    if(encoded.length > 1500){
-        const key = 'images_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8);
-        try{
-            localStorage.setItem(key, json);
-            url.searchParams.set('imagesKey', key);
-        }catch(e){
-            // If localStorage fails, fallback to URL (may be large)
-            url.searchParams.set('images', encoded);
-        }
-    }else{
-        url.searchParams.set('images', encoded);
+    // extract images robustly (supports data: URLs and http(s) links)
+    let parts = extractImageEntries(raw);
+    if(!parts || parts.length===0){
+        parts = raw.split(/\r?\n|,\s*/g).map(s=>s.trim()).filter(Boolean);
     }
+    // Use the first entry as the key value for index link
+    const first = parts[0];
+    const idxUrl = new URL(window.location.pathname, window.location.href);
+    idxUrl.searchParams.set('key', first);
 
     try{
-        await navigator.clipboard.writeText(url.href);
-        alert('Đã tạo và sao chép link:\n' + url.href);
+        await navigator.clipboard.writeText(idxUrl.href);
+        alert('Đã tạo và sao chép link index:\n' + idxUrl.href);
     }catch(e){
-        alert('Đã tạo link: ' + url.href);
+        alert('Đã tạo link index: ' + idxUrl.href);
     }
-    // open in new tab
-    window.open(url.href, '_blank');
+    // open index link in new tab
+    window.open(idxUrl.href, '_blank');
+    // hide the input UI locally and set the letter to open page2 with images=<first>
+    document.getElementById('image-input-container').style.display = 'none';
+    document.getElementById('letter').onclick = () => { window.location.href = 'page2.html?images=' + encodeURIComponent(first) };
 });
 </script>
 
@@ -373,26 +398,61 @@ generateBtn.addEventListener('click', async ()=>{
 <script>
 document.addEventListener('DOMContentLoaded', ()=>{
     const params = new URLSearchParams(window.location.search);
+    // If opened with ?key=..., hide the input UI and point the letter to page2 with that image
+    const singleKey = params.get('key');
+    if(singleKey){
+        const container = document.getElementById('image-input-container');
+        if(container) container.style.display = 'none';
+        // ensure letter opens page2 with images=<key>
+        document.getElementById('letter').onclick = () => { window.location.href = 'page2.html?images=' + encodeURIComponent(singleKey) };
+        return;
+    }
+    // support either `images` (encoded JSON) or `imagesKey` (localStorage key)
     const raw = params.get('images');
-    if(!raw) return;
-    let decoded;
-    try{ decoded = decodeURIComponent(raw); }catch(e){ decoded = raw; }
+    const key = params.get('imagesKey');
     let parts = null;
-    try{ parts = JSON.parse(decoded); }
-    catch(e){ parts = decoded.split(',').map(s=>s.trim()).filter(Boolean); }
+    if(key){
+        try{ const stored = localStorage.getItem(key); if(stored) parts = JSON.parse(stored); }
+        catch(e){ parts = null; }
+    }
+    if(!parts && raw){
+        let decoded;
+        try{ decoded = decodeURIComponent(raw); }catch(e){ decoded = raw; }
+        try{ parts = JSON.parse(decoded); }
+        catch(e){ parts = decoded.split(',').map(s=>s.trim()).filter(Boolean); }
+    }
     if(parts && parts.length){
-        imageLinksTextarea.value = parts.join(', ');
-        // show temporary link UI
+        imageLinksTextarea.value = parts.join('\n');
+        // show temporary link UI (opens page2 for preview)
         const container = document.getElementById('image-input-container');
         const div = document.createElement('div');
         div.style.marginTop = '8px';
         div.style.fontSize = '0.95rem';
-        const url = new URL('page2.html', window.location.href);
-        url.searchParams.set('images', encodeURIComponent(JSON.stringify(parts)));
+        const url = buildPage2Url(parts);
+        if(key) url.searchParams.set('imagesKey', key);
         div.innerHTML = 'Link tạm: <a href="'+url.href+'" target="_blank">Mở trang với ảnh</a>';
+        // set letter to open page2 with these images
+        document.getElementById('letter').onclick = () => { window.location.href = url.href };
         container.appendChild(div);
     }
 });
+</script>
+
+<script>
+// helper to build page2 URL from parts and optionally store large payload in localStorage
+function buildPage2Url(parts){
+    const json = JSON.stringify(parts);
+    const encoded = encodeURIComponent(json);
+    const url = new URL('page2.html', window.location.href);
+    if(encoded.length > 1500){
+        const key = 'images_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8);
+        try{ localStorage.setItem(key, json); url.searchParams.set('imagesKey', key); }
+        catch(e){ url.searchParams.set('images', encoded); }
+    }else{
+        url.searchParams.set('images', encoded);
+    }
+    return url;
+}
 </script>
 
 </body>

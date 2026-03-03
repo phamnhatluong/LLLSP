@@ -352,8 +352,8 @@ body.portrait-mode #landscape-warning {
 </head>
 
 <body>
-  <div id="container">
-    <div id="image-input-container" >
+  <div id="container" >
+    <div id="image-input-container" style="display:none">
       <label>Nhập link ảnh (thêm ảnh khác bằng cách thêm dấu , phẩy sau link ảnh cũ):</label><br />
       <textarea id="image-links" rows="4" cols="40"></textarea><br />
       <button id="generate-link">Copy link trang</button>
@@ -610,8 +610,20 @@ const galaxyParameters = {
 };
 function getHeartImagesFromURL() {
   const params = new URLSearchParams(window.location.search);
+  // Prefer a short key stored in localStorage (for large payloads)
+  const key = params.get('imagesKey');
+  if(key){
+    try{
+      const stored = localStorage.getItem(key);
+      if(stored){
+        const arr = JSON.parse(stored);
+        if(Array.isArray(arr)) return arr.map(s=>String(s).trim()).filter(Boolean);
+      }
+    }catch(e){ /* ignore and fallback */ }
+  }
+
   const raw = params.get('images');
-  if (!raw) return null;
+  if(!raw) return null;
   const decoded = decodeURIComponent(raw);
   // Try JSON (we encode as JSON in index to support data URLs)
   try{
