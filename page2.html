@@ -3,22 +3,35 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>8/3 Magic Particles AI</title>
+    <title>8/3 Magic AI - Music Edition</title>
     <style>
         body { margin: 0; overflow: hidden; background: #050505; font-family: 'Segoe UI', sans-serif; color: white; }
         
-        /* UI Control Panel */
+        /* Màn hình bắt đầu để kích hoạt âm thanh */
+        #overlay-start {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(5, 5, 5, 0.95); display: flex; flex-direction: column;
+            justify-content: center; align-items: center; z-index: 10000;
+        }
+        #btn-start {
+            padding: 15px 40px; font-size: 1.2rem; border: none; border-radius: 30px;
+            background: linear-gradient(45deg, #ff4d6d, #ff8fa3); color: white;
+            cursor: pointer; font-weight: bold; box-shadow: 0 0 20px rgba(255, 77, 109, 0.5);
+            transition: transform 0.2s;
+        }
+        #btn-start:hover { transform: scale(1.1); }
+
         #ui-container {
             position: absolute; top: 15px; left: 15px; z-index: 100;
             background: rgba(20, 20, 20, 0.8); padding: 15px; border-radius: 12px;
             border: 1px solid rgba(255,255,255,0.1); backdrop-filter: blur(10px);
+            display: none; /* Hiện sau khi bấm Start */
         }
         .video-container { position: relative; width: 180px; height: 135px; margin-top: 10px; border: 2px solid #ff4d6d; border-radius: 8px; overflow: hidden; }
         #webcam-preview { width: 100%; height: 100%; transform: scaleX(-1); object-fit: cover; }
         #hand-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform: scaleX(-1); }
         #status { font-size: 11px; color: #ff4d6d; margin-top: 8px; font-weight: bold; }
         
-        /* Rotate Device Overlay */
         #rotate-device {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: #050505; display: none; flex-direction: column;
@@ -27,8 +40,6 @@
         #rotate-device svg { width: 60px; fill: #ff4d6d; animation: rotateAnim 2s infinite; }
         @keyframes rotateAnim { 0%, 100% { transform: rotate(0deg); } 50% { transform: rotate(-90deg); } }
         @media screen and (orientation: portrait) and (max-width: 900px) { #rotate-device { display: flex; } }
-
-        canvas { display: block; }
     </style>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -37,6 +48,12 @@
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 </head>
 <body>
+
+<div id="overlay-start">
+    <h2 style="color: #ff4d6d; margin-bottom: 30px;">Quà tặng 8/3 đặc biệt</h2>
+    <button id="btn-start">MỞ QUÀ</button>
+    <p style="margin-top: 20px; font-size: 0.8rem; color: #888;">Hãy đảm bảo thiết bị của bạn đã bật âm thanh</p>
+</div>
 
 <div id="rotate-device">
     <svg viewBox="0 0 24 24"><path d="M16.48 2.52c3.27 1.55 5.61 4.72 5.97 8.48h2l-3 3-3-3h2c-.35-3.11-2.23-5.73-4.91-7.01l1.01-1.47c-.01 0-.05-.01-.07-.01zm-15.48 9.48c.35 3.11 2.23 5.73 4.91 7.01l-1.01 1.47c.01 0 .05.01.07.01-3.27-1.55-5.61-4.72-5.97-8.48h-2l3-3 3 3h-2z"/></svg>
@@ -52,12 +69,30 @@
     <div id="status">Khởi tạo AI...</div>
 </div>
 
+<audio id="bg-music" src="Ly2.mp3" loop></audio>
+
 <script>
-    // --- 1. SETUP THREE.JS ---
+    // --- KHỞI TẠO ÂM THANH VÀ CAMERA KHI BẤM NÚT ---
+    const btnStart = document.getElementById('btn-start');
+    const overlayStart = document.getElementById('overlay-start');
+    const bgMusic = document.getElementById('bg-music');
+    const uiContainer = document.getElementById('ui-container');
+
+    btnStart.onclick = () => {
+        overlayStart.style.display = 'none';
+        uiContainer.style.display = 'block';
+        
+        // Phát nhạc
+        bgMusic.play().catch(e => console.log("Lỗi phát nhạc:", e));
+        
+        // Bắt đầu Camera và AI
+        cameraAI.start();
+    };
+
+    // --- SETUP THREE.JS ---
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 1, 1000);
     camera.position.z = 250;
-    
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -73,11 +108,11 @@
     for (let i = 0; i < PARTICLE_COUNT; i++) {
         const t = Math.random() * Math.PI * 2;
         const x = 16 * Math.pow(Math.sin(t), 3);
-        const y = 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t);
+        const y = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
         heartPos[i*3] = x * 4.5; heartPos[i*3+1] = y * 4.5; heartPos[i*3+2] = (Math.random()-0.5)*15;
     }
 
-    // Tạo hình chữ 8/3 (Canvas map)
+    // Tạo hình chữ 8/3
     const tCtx = document.createElement('canvas').getContext('2d');
     tCtx.canvas.width = 1000; tCtx.canvas.height = 300;
     tCtx.fillStyle = 'white'; tCtx.font = 'bold 150px Arial'; tCtx.textAlign = 'center';
@@ -92,7 +127,7 @@
         textPos[i*3] = p.x; textPos[i*3+1] = p.y; textPos[i*3+2] = (Math.random()-0.5)*10;
     }
 
-    // Tạo hình Vòng tròn (Rộng hơn để chứa ảnh)
+    // Tạo hình Vòng tròn
     for (let i = 0; i < PARTICLE_COUNT; i++) {
         const angle = Math.random() * Math.PI * 2;
         const radius = 110 + Math.random() * 8; 
@@ -107,19 +142,17 @@
     const points = new THREE.Points(geometry, material);
     scene.add(points);
 
-    // --- 2. HÌNH ẢNH BO TRÒN CÓ VIỀN ---
+    // HÌNH ẢNH TRONG VÒNG TRÒN
     const imageCanvas = document.createElement('canvas');
     const imageCtx = imageCanvas.getContext('2d');
     imageCanvas.width = 512; imageCanvas.height = 512;
     const canvasTexture = new THREE.CanvasTexture(imageCanvas);
-    
     const img = new Image();
     img.crossOrigin = "anonymous";
-    img.src = 'picture1.png'; // Thay bằng link ảnh của bạn
+    img.src = 'picture1.png';
     img.onload = () => {
         const cx = 256, cy = 256;
-        imageCtx.beginPath();
-        imageCtx.arc(cx, cy, 240, 0, Math.PI*2);
+        imageCtx.beginPath(); imageCtx.arc(cx, cy, 240, 0, Math.PI*2);
         imageCtx.lineWidth = 15; imageCtx.strokeStyle = '#ff4d6d'; imageCtx.stroke();
         imageCtx.save();
         imageCtx.beginPath(); imageCtx.arc(cx, cy, 230, 0, Math.PI*2); imageCtx.clip();
@@ -135,34 +168,25 @@
     );
     scene.add(imageMesh);
 
-    // --- 3. ANIMATION & LOGIC ---
     let state = 'heart';
     let targetRotY = 0;
 
     function animate() {
         requestAnimationFrame(animate);
-        
         let targetData = (state === 'heart') ? heartPos : (state === 'text' ? textPos : circlePos);
         const pos = geometry.attributes.position.array;
-        
-        // Tốc độ chuyển đổi hạt (0.2 cực nhanh)
         for (let i = 0; i < PARTICLE_COUNT * 3; i++) {
             pos[i] += (targetData[i] - pos[i]) * 0.2;
         }
         geometry.attributes.position.needsUpdate = true;
-
-        // Hiện/Ẩn ảnh
         imageMesh.material.opacity += ((state === 'circle' ? 1 : 0) - imageMesh.material.opacity) * 0.15;
-
-        // Xoay tốc độ cao theo tay
         points.rotation.y += (targetRotY - points.rotation.y) * 0.3;
         imageMesh.rotation.y = points.rotation.y;
-
         renderer.render(scene, camera);
     }
     animate();
 
-    // --- 4. AI HAND TRACKING ---
+    // SETUP CAMERA AI
     const videoElement = document.getElementById('webcam-preview');
     const canvasElement = document.getElementById('hand-canvas');
     const canvasCtx = canvasElement.getContext('2d');
@@ -176,18 +200,12 @@
             const lm = res.multiHandLandmarks[0];
             drawConnectors(canvasCtx, lm, HAND_CONNECTIONS, {color: '#00FF00', lineWidth: 2});
             drawLandmarks(canvasCtx, lm, {color: '#FF0000', lineWidth: 1, radius: 2});
-
-            // Xoay (Biên độ 5.0)
             targetRotY = (lm[0].x - 0.5) * 5.0;
-
-            // Nhận diện cử chỉ
             const distOK = Math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y);
             const distOpen = Math.hypot(lm[12].x - lm[0].x, lm[12].y - lm[0].y);
-
             if (distOK < 0.05) state = 'circle';
             else if (distOpen > 0.4) state = 'text';
             else state = 'heart';
-            
             document.getElementById('status').innerText = "AI Online - " + state.toUpperCase();
         } else {
             state = 'heart';
@@ -203,7 +221,6 @@
         },
         width: 640, height: 480
     });
-    cameraAI.start();
 
     window.onresize = () => {
         camera.aspect = window.innerWidth / window.innerHeight;
@@ -211,7 +228,6 @@
         renderer.setSize(window.innerWidth, window.innerHeight);
     };
     window.onresize();
-
 </script>
 </body>
 </html>
