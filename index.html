@@ -116,6 +116,13 @@ body{
     animation:fadeIn .5s ease;
 }
 
+.msg.highlight{
+    background: #e53935; /* red */
+    color: white;
+    box-shadow: 0 6px 18px rgba(229,57,53,0.18);
+    transform: translateY(-2px);
+}
+
 @keyframes fadeIn{
     from{opacity:0;transform:translateY(10px);}
     to{opacity:1;transform:translateY(0);}
@@ -193,7 +200,7 @@ body{
 <body>
 
 <!-- IMAGE INPUT (show on entry) -->
-<div id="image-input-container">
+<div id="image-input-container" style="display: none;">
     <label>Nhập link ảnh (hoặc chọn ảnh từ máy):</label><br />
     <textarea id="image-links" rows="3" placeholder="https://... , https://..."></textarea>
     <button id="generate-link">Tạo link & Mở trang</button>
@@ -277,9 +284,13 @@ keys.forEach(key=>{
 });
 
 const messages = [
-"chào mọi người tớ là Châu Phúc Lợi",
-"tớ xin gửi lời chúc 8/3 đến các bạn nữ ạ",
-"nhớ là ấn vô bức thư nha"
+"Hello💥Tui là Phạm Nhật Lương nè.",
+"Chúc bạn iu một ngày 8/3 thật vui vẻ và hạnh phúc nhaaa 🥰",
+"Thật ra tui thích bạn cũng lâu rồi, nhưng hôm nay mới dám nói 😳.",
+"Bạn hong cần đồng ý vội đâu, tui hong nghĩ sẽ tốt hơn người cũ của bạn",
+"Nhma tui sẽ luôn cố gắng để làm bạn hạnh phúc và cảm thấy được yêu thương❤",
+"Nếu bạn đồng ý thì nhắn có là được ròi💗",
+"Còn không thì bạn cứ coi như chưa đọc rồi mình xem như chưa có gì xảy ra ne.🖤"
 ];
 
 function startChat(){
@@ -290,6 +301,9 @@ function startChat(){
         if(i < messages.length){
             let div = document.createElement("div");
             div.className="msg";
+            if(i === 2){
+                div.classList.add('highlight');
+            }
             div.innerText=messages[i];
             chat.appendChild(div);
             chat.scrollTop = chat.scrollHeight;
@@ -347,24 +361,44 @@ uploadInput.addEventListener('change', async (e)=>{
     const existing = imageLinksTextarea.value.trim();
     const combined = existing ? existing + '\n' + dataUrls.join('\n') : dataUrls.join('\n');
     imageLinksTextarea.value = combined;
-    // Use the first image as the key value and create an index link: index.html?key=<image>
-    const first = dataUrls[0];
+    // Build a page2 URL using all selected images (supports data URLs)
     try{
+        // encode the images array as JSON and store in `key`
+        const keyVal = encodeURIComponent(JSON.stringify(dataUrls));
         const idxUrl = new URL(window.location.pathname, window.location.href);
-        idxUrl.searchParams.set('key', first);
+        idxUrl.searchParams.set('key', keyVal);
         await navigator.clipboard.writeText(idxUrl.href);
         alert('Đã tạo và sao chép link index:\n' + idxUrl.href);
-        // open index link (preview)
-        window.open(idxUrl.href, '_blank');
+        // Show a temporary link UI but keep the input visible so user stays on index
+        const container = document.getElementById('image-input-container');
+        const infoDiv = document.createElement('div');
+        infoDiv.style.marginTop = '8px';
+        infoDiv.style.fontSize = '0.95rem';
+        infoDiv.innerHTML = 'Link tạm: <a href="'+idxUrl.href+'" target="_blank">Mở trang với ảnh</a>';
+        // remove previous temp link if present
+        const existingTemp = container.querySelector('.temp-link');
+        if(existingTemp) existingTemp.remove();
+        infoDiv.className = 'temp-link';
+        container.appendChild(infoDiv);
+        // set the letter to open page2 with images=<decoded JSON>
+        const page2param = 'page2.html?images=' + encodeURIComponent(JSON.stringify(dataUrls));
+        document.getElementById('letter').onclick = () => { window.location.href = page2param };
     }catch(e){
-        const idx = window.location.pathname + '?key=' + encodeURIComponent(first);
+        // fallback: use first image as key (encoded)
+        const first = dataUrls[0];
+        const idx = window.location.pathname + '?key=' + encodeURIComponent(JSON.stringify([first]));
         alert('Đã tạo link index: ' + idx);
-        window.open(idx, '_blank');
+        const container = document.getElementById('image-input-container');
+        const infoDiv = document.createElement('div');
+        infoDiv.style.marginTop = '8px';
+        infoDiv.style.fontSize = '0.95rem';
+        infoDiv.innerHTML = 'Link tạm: <a href="'+idx+'" target="_blank">Mở trang với ảnh</a>';
+        const existingTemp = container.querySelector('.temp-link');
+        if(existingTemp) existingTemp.remove();
+        infoDiv.className = 'temp-link';
+        container.appendChild(infoDiv);
+        document.getElementById('letter').onclick = () => { window.location.href = 'page2.html?images=' + encodeURIComponent(JSON.stringify([first])) };
     }
-    // hide the input UI (index opened with key should hide it)
-    document.getElementById('image-input-container').style.display = 'none';
-    // set the letter to open page2 with images=<first-image>
-    document.getElementById('letter').onclick = () => { window.location.href = 'page2.html?images=' + encodeURIComponent(first) };
 });
 
 generateBtn.addEventListener('click', async ()=>{
@@ -375,22 +409,43 @@ generateBtn.addEventListener('click', async ()=>{
     if(!parts || parts.length===0){
         parts = raw.split(/\r?\n|,\s*/g).map(s=>s.trim()).filter(Boolean);
     }
-    // Use the first entry as the key value for index link
-    const first = parts[0];
-    const idxUrl = new URL(window.location.pathname, window.location.href);
-    idxUrl.searchParams.set('key', first);
-
+    // Build a page2 URL using all provided image links
     try{
+        // encode parts array into the key as JSON
+        const keyVal = encodeURIComponent(JSON.stringify(parts));
+        const idxUrl = new URL(window.location.pathname, window.location.href);
+        idxUrl.searchParams.set('key', keyVal);
         await navigator.clipboard.writeText(idxUrl.href);
         alert('Đã tạo và sao chép link index:\n' + idxUrl.href);
+        // Show temporary link UI and keep index visible
+        const container = document.getElementById('image-input-container');
+        const infoDiv = document.createElement('div');
+        infoDiv.style.marginTop = '8px';
+        infoDiv.style.fontSize = '0.95rem';
+        infoDiv.innerHTML = 'Link tạm: <a href="'+idxUrl.href+'" target="_blank">Mở trang với ảnh</a>';
+        const existingTemp = container.querySelector('.temp-link');
+        if(existingTemp) existingTemp.remove();
+        infoDiv.className = 'temp-link';
+        container.appendChild(infoDiv);
+        const page2param = 'page2.html?images=' + encodeURIComponent(JSON.stringify(parts));
+        document.getElementById('letter').onclick = () => { window.location.href = page2param };
     }catch(e){
+        // fallback: use first image as key
+        const first = parts[0];
+        const idxUrl = new URL(window.location.pathname, window.location.href);
+        idxUrl.searchParams.set('key', encodeURIComponent(JSON.stringify([first])));
         alert('Đã tạo link index: ' + idxUrl.href);
+        const container = document.getElementById('image-input-container');
+        const infoDiv = document.createElement('div');
+        infoDiv.style.marginTop = '8px';
+        infoDiv.style.fontSize = '0.95rem';
+        infoDiv.innerHTML = 'Link tạm: <a href="'+idxUrl.href+'" target="_blank">Mở trang với ảnh</a>';
+        const existingTemp = container.querySelector('.temp-link');
+        if(existingTemp) existingTemp.remove();
+        infoDiv.className = 'temp-link';
+        container.appendChild(infoDiv);
+        document.getElementById('letter').onclick = () => { window.location.href = 'page2.html?images=' + encodeURIComponent(JSON.stringify([first])) };
     }
-    // open index link in new tab
-    window.open(idxUrl.href, '_blank');
-    // hide the input UI locally and set the letter to open page2 with images=<first>
-    document.getElementById('image-input-container').style.display = 'none';
-    document.getElementById('letter').onclick = () => { window.location.href = 'page2.html?images=' + encodeURIComponent(first) };
 });
 </script>
 
@@ -403,8 +458,27 @@ document.addEventListener('DOMContentLoaded', ()=>{
     if(singleKey){
         const container = document.getElementById('image-input-container');
         if(container) container.style.display = 'none';
-        // ensure letter opens page2 with images=<key>
-        document.getElementById('letter').onclick = () => { window.location.href = 'page2.html?images=' + encodeURIComponent(singleKey) };
+        // decode key: it should be encodeURIComponent(JSON.stringify(array)) created earlier
+        let decoded = null;
+        try{ decoded = decodeURIComponent(singleKey); }catch(e){ decoded = singleKey; }
+        try{
+            const arr = JSON.parse(decoded);
+            if(Array.isArray(arr)){
+                // set letter to open page2 with encoded JSON array
+                document.getElementById('letter').onclick = () => { window.location.href = 'page2.html?images=' + encodeURIComponent(JSON.stringify(arr)) };
+                return;
+            }
+        }catch(e){ /* not JSON */ }
+        // fallback: if decoded looks like a URL to page2, use it; else treat as single image
+        try{
+            const parsed = new URL(decoded, window.location.href);
+            if(parsed.pathname && parsed.pathname.endsWith('page2.html') || parsed.searchParams.has('images')){
+                document.getElementById('letter').onclick = () => { window.location.href = parsed.href };
+                return;
+            }
+        }catch(e){ /* not a URL */ }
+        // treat as single image link
+        document.getElementById('letter').onclick = () => { window.location.href = 'page2.html?images=' + encodeURIComponent(JSON.stringify([decoded])) };
         return;
     }
     // support either `images` (encoded JSON) or `imagesKey` (localStorage key)
